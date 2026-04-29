@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snake Game</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a2e;
+      color: #e0e0e0;
+      font-family: 'Courier New', Courier, monospace;
+      width: 100vw;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-x: hidden;
+    }
+
+    #title {
+      margin-top: 16px;
+      font-size: 1.6em;
+      color: #a0ffa0;
+      letter-spacing: 4px;
+      text-shadow: 0 0 10px #0f0;
+    }
+
+    #key-guide {
+      margin-top: 8px;
+      font-size: 0.85em;
+      color: #aaa;
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    #key-guide span {
+      background: #2a2a4a;
+      border: 1px solid #445;
+      border-radius: 4px;
+      padding: 2px 10px;
+    }
+
+    #score-board {
+      margin-top: 12px;
+      display: flex;
+      gap: 32px;
+      font-size: 1em;
+      color: #ccc;
+    }
+
+    #score-board .label { color: #888; }
+    #score-board .value {
+      color: #a0ffa0;
+      font-weight: bold;
+      text-shadow: 0 0 6px #0f0;
+    }
+
+    #canvas-wrap {
+      margin-top: 16px;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      border: 2px solid #2a4a2a;
+      box-shadow: 0 0 20px #0a0, 0 0 40px #050;
+    }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 10, 20, 0.85);
+      gap: 16px;
+    }
+
+    #overlay.hidden { display: none; }
+
+    #overlay-title {
+      font-size: 2em;
+      color: #a0ffa0;
+      text-shadow: 0 0 12px #0f0;
+      letter-spacing: 4px;
+    }
+
+    #overlay-sub {
+      font-size: 1em;
+      color: #aaa;
+    }
+
+    #overlay-score {
+      font-size: 1.2em;
+      color: #fff;
+    }
+
+    #start-btn {
+      margin-top: 8px;
+      padding: 10px 32px;
+      font-family: inherit;
+      font-size: 1em;
+      background: #1a3a1a;
+      color: #a0ffa0;
+      border: 2px solid #0a0;
+      border-radius: 6px;
+      cursor: pointer;
+      letter-spacing: 2px;
+      text-shadow: 0 0 6px #0f0;
+      box-shadow: 0 0 10px #0a0;
+      transition: background 0.15s;
+    }
+
+    #start-btn:hover { background: #2a5a2a; }
+  </style>
+</head>
+<body>
+
+<div id="title">&#x1F40D; SNAKE</div>
+
+<div id="key-guide">
+  <span>↑↓←→ / WASD : 移動</span>
+  <span>P : 一時停止</span>
+  <span>Enter : スタート</span>
+</div>
+
+<div id="score-board">
+  <div><span class="label">スコア: </span><span class="value" id="score">0</span></div>
+  <div><span class="label">ベスト: </span><span class="value" id="best">0</span></div>
+  <div><span class="label">レベル: </span><span class="value" id="level">1</span></div>
+</div>
+
+<div id="canvas-wrap">
+  <canvas id="canvas"></canvas>
+  <div id="overlay">
+    <div id="overlay-title">SNAKE</div>
+    <div id="overlay-sub">Enterキーでスタート</div>
+    <div id="overlay-score"></div>
+    <button id="start-btn">START</button>
+  </div>
+</div>
+
+<script>
+const COLS = 25, ROWS = 25, CELL = 24;
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+canvas.width  = COLS * CELL;
+canvas.height = ROWS * CELL;
+
+const scoreEl = document.getElementById('score');
+const bestEl  = document.getElementById('best');
+const levelEl = document.getElementById('level');
+const overlay = document.getElementById('overlay');
+const overlayTitle = document.getElementById('overlay-title');
+const overlaySub   = document.getElementById('overlay-sub');
+const overlayScore = document.getElementById('overlay-score');
+const startBtn = document.getElementById('start-btn');
+
+const DIR = { UP:[0,-1], DOWN:[0,1], LEFT:[-1,0], RIGHT:[1,0] };
+
+let snake, dir, nextDir, food, score, best, level, paused, dead, loopId, particles;
+
+best = parseInt(localStorage.getItem('snakeBest') || '0');
+bestEl.textContent = best;
+
+function baseInterval(lvl) { return Math.max(80, 220 - (lvl - 1) * 20); }
+
+function newGame() {
+  const mx = Math.floor(COLS / 2), my = Math.floor(ROWS / 2);
+  snake = [{x: mx, y: my}, {x: mx-1, y: my}, {x: mx-2, y: my}];
+  dir = DIR.RIGHT;
+  nextDir = DIR.RIGHT;
+  score = 0;
+  level = 1;
+  paused = false;
+  dead = false;
+  particles = [];
+  placeFood();
+  scoreEl.textContent = 0;
+  levelEl.textContent = 1;
+  overlay.classList.add('hidden');
+  clearTimeout(loopId);
+  tick();
+}
+
+function placeFood() {
+  const occupied = new Set(snake.map(s => s.x + ',' + s.y));
+  let fx, fy;
+  do {
+    fx = Math.floor(Math.random() * COLS);
+    fy = Math.floor(Math.random() * ROWS);
+  } while (occupied.has(fx + ',' + fy));
+  food = {x: fx, y: fy};
+}
+
+function tick() {
+  if (dead || paused) return;
+  dir = nextDir;
+  const head = {x: snake[0].x + dir[0], y: snake[0].y + dir[1]};
+
+  // Wall collision
+  if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) {
+    return gameOver();
+  }
+  // Self collision
+  if (snake.some(s => s.x === head.x && s.y === head.y)) {
+    return gameOver();
+  }
+
+  snake.unshift(head);
+  const ate = head.x === food.x && head.y === food.y;
+  if (ate) {
+    score += level * 10;
+    if (score > best) { best = score; localStorage.setItem('snakeBest', best); bestEl.textContent = best; }
+    scoreEl.textContent = score;
+    level = Math.floor(score / 100) + 1;
+    levelEl.textContent = level;
+    spawnParticles(food.x, food.y);
+    placeFood();
+  } else {
+    snake.pop();
+  }
+
+  draw();
+  loopId = setTimeout(tick, baseInterval(level));
+}
+
+function gameOver() {
+  dead = true;
+  draw();
+  overlayTitle.textContent = 'GAME OVER';
+  overlaySub.textContent = 'Enterキーでリスタート';
+  overlayScore.textContent = 'スコア: ' + score;
+  startBtn.textContent = 'RETRY';
+  overlay.classList.remove('hidden');
+}
+
+// Particles
+function spawnParticles(cx, cy) {
+  for (let i = 0; i < 10; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 2.5;
+    particles.push({
+      x: (cx + 0.5) * CELL, y: (cy + 0.5) * CELL,
+      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+      life: 1.0, r: 2 + Math.random() * 3
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.life -= 0.06;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function draw() {
+  // Background grid
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = '#161b22';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath(); ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, canvas.height); ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath(); ctx.moveTo(0, y * CELL); ctx.lineTo(canvas.width, y * CELL); ctx.stroke();
+  }
+
+  // Food (pulsing)
+  const pulse = 0.8 + 0.2 * Math.sin(Date.now() / 200);
+  const fr = (food.x + 0.5) * CELL, fc = (food.y + 0.5) * CELL;
+  const foodGrad = ctx.createRadialGradient(fr, fc, 1, fr, fc, CELL * 0.45 * pulse);
+  foodGrad.addColorStop(0, '#fff');
+  foodGrad.addColorStop(0.3, '#ff6060');
+  foodGrad.addColorStop(1, '#a00');
+  ctx.beginPath();
+  ctx.arc(fr, fc, CELL * 0.4 * pulse, 0, Math.PI * 2);
+  ctx.fillStyle = foodGrad;
+  ctx.fill();
+  // glow
+  ctx.shadowColor = '#f00';
+  ctx.shadowBlur = 12 * pulse;
+  ctx.beginPath();
+  ctx.arc(fr, fc, CELL * 0.35 * pulse, 0, Math.PI * 2);
+  ctx.fillStyle = '#ff4444';
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Snake
+  for (let i = snake.length - 1; i >= 0; i--) {
+    const s = snake[i];
+    const t = i / (snake.length - 1);
+    const g = Math.round(200 - t * 120);
+    const b = Math.round(80 - t * 60);
+    const color = `rgb(0,${g},${b})`;
+    const margin = i === 0 ? 1 : 2;
+    const rx = s.x * CELL + margin, ry = s.y * CELL + margin;
+    const rw = CELL - margin * 2, rh = CELL - margin * 2;
+
+    if (i === 0) {
+      ctx.shadowColor = '#0f0';
+      ctx.shadowBlur = 10;
+    }
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(rx, ry, rw, rh, 4);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Scales pattern (body)
+    if (i > 0 && i % 2 === 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.beginPath();
+      ctx.roundRect(rx + 3, ry + 3, rw - 6, rh - 6, 2);
+      ctx.fill();
+    }
+  }
+
+  // Eyes on head
+  if (snake.length > 0) {
+    const h = snake[0];
+    const hx = (h.x + 0.5) * CELL, hy = (h.y + 0.5) * CELL;
+    const [dx, dy] = dir;
+    const ex = dx * CELL * 0.22, ey = dy * CELL * 0.22;
+    const px = -dy * CELL * 0.14, py = dx * CELL * 0.14;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(hx + ex + px, hy + ey + py, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(hx + ex - px, hy + ey - py, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(hx + ex + px + dx * 1.2, hy + ey + py + dy * 1.2, 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(hx + ex - px + dx * 1.2, hy + ey - py + dy * 1.2, 1.5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Particles
+  updateParticles();
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = '#ffdd44';
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Controls
+document.addEventListener('keydown', e => {
+  switch (e.code) {
+    case 'ArrowUp':    case 'KeyW': if (dir !== DIR.DOWN)  nextDir = DIR.UP;    break;
+    case 'ArrowDown':  case 'KeyS': if (dir !== DIR.UP)    nextDir = DIR.DOWN;  break;
+    case 'ArrowLeft':  case 'KeyA': if (dir !== DIR.RIGHT) nextDir = DIR.LEFT;  break;
+    case 'ArrowRight': case 'KeyD': if (dir !== DIR.LEFT)  nextDir = DIR.RIGHT; break;
+    case 'KeyP':
+      if (!dead) {
+        paused = !paused;
+        if (!paused) tick();
+      }
+      break;
+    case 'Enter':
+      if (dead || overlay.classList.contains('hidden') === false) newGame();
+      break;
+  }
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+});
+
+startBtn.addEventListener('click', newGame);
+
+// Initial draw
+draw();
+
+// Food pulse animation even on overlay
+setInterval(() => { if (food && !dead) draw(); }, 100);
+</script>
+</body>
+</html>

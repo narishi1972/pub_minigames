@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>倉庫番</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a2e;
+      color: #e0e0e0;
+      font-family: 'Courier New', Courier, monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #title {
+      margin-top: 16px;
+      font-size: 1.6em;
+      color: #ffd700;
+      letter-spacing: 6px;
+      text-shadow: 0 0 10px #ffa500;
+    }
+
+    #info {
+      margin-top: 6px;
+      font-size: 0.8em;
+      color: #888;
+      letter-spacing: 4px;
+    }
+
+    #stats {
+      margin-top: 10px;
+      font-size: 0.9em;
+      color: #bbb;
+      display: flex;
+      gap: 8px;
+    }
+
+    #stats span { color: #ffd700; }
+
+    #board {
+      margin-top: 14px;
+      display: block;
+      border: 1px solid #333;
+      border-radius: 4px;
+      image-rendering: pixelated;
+    }
+
+    #message {
+      margin-top: 10px;
+      font-size: 0.95em;
+      min-height: 1.5em;
+      color: #7fff7f;
+      letter-spacing: 1px;
+      text-shadow: 0 0 8px #0f0;
+      text-align: center;
+    }
+
+    #level-select {
+      margin-top: 10px;
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 500px;
+    }
+
+    #level-select button {
+      background: #2a2a3e;
+      border: 1px solid #444;
+      color: #bbb;
+      font-family: inherit;
+      font-size: 0.75em;
+      padding: 2px 9px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: border-color 0.1s, color 0.1s;
+    }
+
+    #level-select button:hover { border-color: #ffd700; color: #ffd700; }
+    #level-select button.active { border-color: #ffd700; color: #ffd700; background: #1a1600; }
+    #level-select button.cleared { border-color: #3a3; color: #5f5; }
+    #level-select button.cleared.active { background: #001600; }
+
+    #key-guide {
+      margin-top: 14px;
+      margin-bottom: 20px;
+      font-size: 0.73em;
+      color: #555;
+      text-align: center;
+      line-height: 2;
+    }
+
+    #key-guide kbd {
+      background: #222230;
+      border: 1px solid #444;
+      border-radius: 3px;
+      padding: 1px 5px;
+      color: #bbb;
+      font-family: inherit;
+    }
+
+    #overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      gap: 16px;
+      z-index: 10;
+    }
+
+    #overlay.show { display: flex; }
+
+    #overlay p {
+      color: #ffd700;
+      font-size: 1.4em;
+      letter-spacing: 4px;
+      text-shadow: 0 0 12px #ffa500;
+    }
+
+    #overlay small {
+      color: #888;
+      font-size: 0.8em;
+    }
+  </style>
+</head>
+<body>
+  <div id="title">倉 庫 番</div>
+  <div id="info">S O K O B A N</div>
+  <div id="stats">
+    LEVEL:&nbsp;<span id="s-level">1</span>&nbsp;&nbsp;
+    MOVES:&nbsp;<span id="s-moves">0</span>&nbsp;&nbsp;
+    PUSHES:&nbsp;<span id="s-pushes">0</span>
+  </div>
+  <canvas id="board"></canvas>
+  <div id="message"></div>
+  <div id="level-select"></div>
+  <div id="key-guide">
+    <kbd>I</kbd>&nbsp;上&nbsp;&nbsp;
+    <kbd>J</kbd>&nbsp;左&nbsp;&nbsp;
+    <kbd>K</kbd>&nbsp;下&nbsp;&nbsp;
+    <kbd>L</kbd>&nbsp;右&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+    <kbd>U</kbd>&nbsp;一手戻す&nbsp;&nbsp;
+    <kbd>R</kbd>&nbsp;やり直し&nbsp;&nbsp;
+    <kbd>H</kbd>&nbsp;ヒント&nbsp;&nbsp;
+    <kbd>N</kbd>&nbsp;次ステージ&nbsp;&nbsp;
+    <kbd>Q</kbd>&nbsp;中断
+  </div>
+
+  <div id="overlay">
+    <p id="overlay-title"></p>
+    <small id="overlay-sub"></small>
+  </div>
+
+<script>
+'use strict';
+
+// ===== LEVELS =====
+// # wall  (space) floor  . goal  $ box  * box-on-goal  @ player  + player-on-goal
+const LEVELS = [
+  // 1 チュートリアル
+  [
+    "#####",
+    "#@$.#",
+    "#####",
+  ],
+  // 2
+  [
+    "######",
+    "# .. #",
+    "# $$ #",
+    "#  @ #",
+    "######",
+  ],
+  // 3
+  [
+    "#####",
+    "#   ##",
+    "# #  #",
+    "# $. #",
+    "## @.#",
+    " #####",
+  ],
+  // 4
+  [
+    "  #####",
+    "  #   #",
+    "  # # #",
+    "##$@$.#",
+    "# ..$##",
+    "#     #",
+    "#######",
+  ],
+  // 5
+  [
+    "########",
+    "#      #",
+    "# $**$ #",
+    "# $  $ #",
+    "#  @@  #",
+    "########",
+  ],
+  // 6
+  [
+    "  ####  ",
+    "  #  ###",
+    "###$   #",
+    "#  $@. #",
+    "# ..  ##",
+    "#   ### ",
+    "#####   ",
+  ],
+  // 7
+  [
+    "#######",
+    "#     #",
+    "# .$. #",
+    "# $@$ #",
+    "# .$. #",
+    "#     #",
+    "#######",
+  ],
+  // 8
+  [
+    "########",
+    "#@     #",
+    "# $$$  #",
+    "# .  . #",
+    "# . .  #",
+    "#      #",
+    "########",
+  ],
+  // 9
+  [
+    " ######",
+    " #    #",
+    "##. # #",
+    "#  $@ #",
+    "# .$  #",
+    "# .  ##",
+    "#  ### ",
+    "####   ",
+  ],
+  // 10
+  [
+    "#####  ",
+    "#   ## ",
+    "# $  # ",
+    "#.$.@# ",
+    "# $  # ",
+    "#   ## ",
+    "#####  ",
+  ],
+  // 11
+  [
+    "  ####  ",
+    "  #  #  ",
+    "  # $#  ",
+    "### $###",
+    "#  . .@#",
+    "# $  ###",
+    "###.####",
+    "  ####  ",
+  ],
+  // 12
+  [
+    "#######",
+    "#  .  #",
+    "# .$. #",
+    "#.$@$.#",
+    "# .$. #",
+    "#  .  #",
+    "#######",
+  ],
+  // 13
+  [
+    "########",
+    "#  @ # #",
+    "# $$ . #",
+    "## # $ #",
+    " # . . #",
+    " #   ###",
+    " #####  ",
+  ],
+  // 14
+  [
+    " ##### ",
+    " #   # ",
+    "##$#.##",
+    "# $@. #",
+    "## $. #",
+    " #   # ",
+    " ##### ",
+  ],
+  // 15 ラスト
+  [
+    "  #####  ",
+    "  # @ #  ",
+    "  # $ #  ",
+    "###$. ###",
+    "#  . .  #",
+    "# $$$   #",
+    "#  .  ###",
+    "#######  ",
+  ],
+];
+
+const WALL  = '#';
+const FLOOR = ' ';
+const GOAL  = '.';
+const BOX   = '$';
+const BOX_G = '*';
+const PLR   = '@';
+const PLR_G = '+';
+
+const GLYPH = {
+  [WALL]:  '🧱',
+  [FLOOR]: '　',
+  [GOAL]:  '🔲',
+  [BOX]:   '📦',
+  [BOX_G]: '✅',
+  [PLR]:   '🧍',
+  [PLR_G]: '🧍',
+};
+
+const CELL = 44;
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+
+// ===== GAME STATE =====
+let levelIndex = 0;
+let grid = [];
+let px = 0, py = 0;
+let moves = 0, pushes = 0;
+let history = [];
+let won = false;
+let quit = false;
+const cleared = new Set();
+
+// ===== HINT STATE =====
+let hintPush = null;   // {bx, by, dx, dy} — the push the solver recommends first
+let hintTimerId = null;
+
+function parseLevel(lines) {
+  const width = Math.max(...lines.map(l => l.length));
+  const g = [];
+  let sx = 0, sy = 0;
+  for (let y = 0; y < lines.length; y++) {
+    const row = [];
+    for (let x = 0; x < width; x++) {
+      const ch = lines[y][x] ?? ' ';
+      if (ch === PLR)   { sx = x; sy = y; row.push(FLOOR); }
+      else if (ch === PLR_G) { sx = x; sy = y; row.push(GOAL); }
+      else row.push(ch);
+    }
+    g.push(row);
+  }
+  return { grid: g, px: sx, py: sy };
+}
+
+function cloneGrid(g) {
+  return g.map(row => [...row]);
+}
+
+function loadLevel(idx) {
+  levelIndex = idx;
+  const p = parseLevel(LEVELS[idx]);
+  grid = p.grid;
+  px = p.px;
+  py = p.py;
+  moves = 0;
+  pushes = 0;
+  history = [];
+  won = false;
+  clearHint();
+  // Fix canvas size once per level so render() never triggers layout reflow
+  const cols = Math.max(...grid.map(r => r.length));
+  const rows = grid.length;
+  canvas.width  = cols * CELL;
+  canvas.height = rows * CELL;
+  setMessage('');
+  updateLevelButtons();
+  render();
+}
+
+function isWon() {
+  return grid.every(row => !row.includes(BOX));
+}
+
+function doMove(dx, dy) {
+  if (won || quit) return;
+
+  const nx = px + dx;
+  const ny = py + dy;
+  if (ny < 0 || ny >= grid.length || nx < 0 || nx >= grid[ny].length) return;
+  const cell = grid[ny][nx];
+  if (cell === WALL) return;
+
+  if (cell === BOX || cell === BOX_G) {
+    const bx = nx + dx;
+    const by = ny + dy;
+    if (by < 0 || by >= grid.length || bx < 0 || bx >= grid[by].length) return;
+    const bcell = grid[by][bx];
+    if (bcell === WALL || bcell === BOX || bcell === BOX_G) return;
+
+    history.push({ grid: cloneGrid(grid), px, py, moves, pushes });
+    grid[by][bx] = bcell === GOAL ? BOX_G : BOX;
+    grid[ny][nx] = cell === BOX_G ? GOAL : FLOOR;
+    pushes++;
+  } else {
+    history.push({ grid: cloneGrid(grid), px, py, moves, pushes });
+  }
+
+  px = nx;
+  py = ny;
+  moves++;
+  clearHint();
+  render();
+
+  if (isWon()) {
+    won = true;
+    cleared.add(levelIndex);
+    updateLevelButtons();
+    const hasNext = levelIndex < LEVELS.length - 1;
+    setMessage(
+      `🎉 CLEAR！ ${moves}手 / ${pushes}プッシュ` +
+      (hasNext ? '　→ N キーで次へ' : '　全ステージ制覇！')
+    );
+  }
+}
+
+function doUndo() {
+  if (quit || history.length === 0) return;
+  const s = history.pop();
+  grid = s.grid;
+  px = s.px;
+  py = s.py;
+  moves = s.moves;
+  pushes = s.pushes;
+  won = false;
+  clearHint();
+  setMessage('');
+  render();
+}
+
+function doQuit() {
+  quit = true;
+  showOverlay('中 断', 'ページをリロードして再スタート (F5)');
+}
+
+function render() {
+  ctx.fillStyle = '#0d0d1a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.font = `${Math.round(CELL * 0.78)}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  for (let y = 0; y < grid.length; y++) {
+    for (let x = 0; x < grid[y].length; x++) {
+      let ch = grid[y][x];
+      if (x === px && y === py) ch = ch === GOAL ? PLR_G : PLR;
+      ctx.fillText(GLYPH[ch] ?? GLYPH[FLOOR], x * CELL + CELL / 2, y * CELL + CELL / 2);
+    }
+  }
+
+  // Hint arrow
+  if (hintPush) {
+    const {bx, by, dx, dy} = hintPush;
+    const phase = (Date.now() / 400) % 1;
+    const alpha = 0.5 + 0.5 * Math.sin(phase * Math.PI * 2);
+    const cx = bx * CELL + CELL / 2;
+    const cy = by * CELL + CELL / 2;
+
+    // Glowing box outline
+    ctx.save();
+    ctx.strokeStyle = `rgba(255,230,0,${alpha})`;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(bx * CELL + 3, by * CELL + 3, CELL - 6, CELL - 6);
+
+    // Arrow from box center outward
+    ctx.strokeStyle = `rgba(255,230,0,${0.7 + 0.3 * alpha})`;
+    ctx.fillStyle   = `rgba(255,230,0,${0.7 + 0.3 * alpha})`;
+    ctx.lineWidth = 3;
+    const len = CELL * 0.65;
+    const ex = cx + dx * len, ey = cy + dy * len;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    // Arrowhead
+    const head = 9, spread = Math.PI / 5;
+    const ang = Math.atan2(dy, dx);
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - head * Math.cos(ang - spread), ey - head * Math.sin(ang - spread));
+    ctx.lineTo(ex - head * Math.cos(ang + spread), ey - head * Math.sin(ang + spread));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  document.getElementById('s-level').textContent = levelIndex + 1;
+  document.getElementById('s-moves').textContent = moves;
+  document.getElementById('s-pushes').textContent = pushes;
+}
+
+function setMessage(txt) {
+  document.getElementById('message').textContent = txt;
+}
+
+function showOverlay(title, sub) {
+  document.getElementById('overlay-title').textContent = title;
+  document.getElementById('overlay-sub').textContent = sub;
+  document.getElementById('overlay').classList.add('show');
+}
+
+// ===== HINT / SOLVER =====
+function clearHint() {
+  hintPush = null;
+  if (hintTimerId) { clearInterval(hintTimerId); hintTimerId = null; }
+}
+
+function requestHint() {
+  if (won || quit) return;
+  clearHint();
+  setMessage('ヒント計算中...');
+
+  // Run solver in next tick so the message renders first
+  setTimeout(() => {
+    const pushes = solveFromCurrent();
+    if (!pushes || pushes.length === 0) {
+      setMessage('ヒント: 解法が見つかりません（行き詰まり？）');
+      return;
+    }
+    hintPush = pushes[0];
+    const name = {'-1,0':'左','1,0':'右','0,-1':'上','0,1':'下'};
+    const dir = name[`${hintPush.dx},${hintPush.dy}`] ?? '?';
+    setMessage(`ヒント: (${hintPush.bx + 1}, ${hintPush.by + 1}) の箱を${dir}へ`);
+    // Pulsing repaint
+    hintTimerId = setInterval(() => render(), 80);
+  }, 0);
+}
+
+// BFS macro-move solver.  Returns array of {bx,by,dx,dy} pushes, or null.
+function solveFromCurrent() {
+  const rows = grid.length;
+
+  const isWall = (x, y) => {
+    if (y < 0 || y >= rows || x < 0) return true;
+    const row = grid[y];
+    return !row || x >= row.length || row[x] === WALL;
+  };
+
+  // Collect goals and initial boxes from current grid
+  const goals = new Set();
+  const initBoxArr = [];
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < (grid[y] || []).length; x++) {
+      const c = grid[y][x];
+      if (c === GOAL  || c === BOX_G) goals.add(`${x},${y}`);
+      if (c === BOX   || c === BOX_G) initBoxArr.push([x, y]);
+    }
+  }
+
+  // Precompute "alive" squares via reverse BFS from goals.
+  // A square is alive if a single box there can eventually reach a goal.
+  const alive = new Set(goals);
+  {
+    const q = initAliveQueue(goals);
+    let qi = 0;
+    while (qi < q.length) {
+      const [bx, by] = q[qi++];
+      for (const [dx, dy] of [[0,-1],[0,1],[-1,0],[1,0]]) {
+        const fx = bx - dx, fy = by - dy;   // where box would come from
+        const pfx = bx - 2*dx, pfy = by - 2*dy; // where player would be
+        if (isWall(fx, fy) || isWall(pfx, pfy)) continue;
+        const fk = `${fx},${fy}`;
+        if (!alive.has(fk)) { alive.add(fk); q.push([fx, fy]); }
+      }
+    }
+  }
+
+  // Player flood-fill → canonical (min row-major) position
+  function getReach(ppx, ppy, boxSet) {
+    const vis = new Set();
+    const start = `${ppx},${ppy}`;
+    vis.add(start);
+    let minX = ppx, minY = ppy;
+    const q = [[ppx, ppy]];
+    let qi = 0;
+    while (qi < q.length) {
+      const [x, y] = q[qi++];
+      for (const [dx, dy] of [[0,-1],[0,1],[-1,0],[1,0]]) {
+        const nx = x+dx, ny = y+dy;
+        const nk = `${nx},${ny}`;
+        if (!vis.has(nk) && !isWall(nx, ny) && !boxSet.has(nk)) {
+          vis.add(nk);
+          if (ny < minY || (ny === minY && nx < minX)) { minX = nx; minY = ny; }
+          q.push([nx, ny]);
+        }
+      }
+    }
+    return { reach: vis, canon: `${minX},${minY}` };
+  }
+
+  const boxKey = arr => arr.map(([x,y]) => `${x},${y}`).sort().join(';');
+
+  const initBoxSet = new Set(initBoxArr.map(([x,y]) => `${x},${y}`));
+  const { reach: initReach, canon: initCanon } = getReach(px, py, initBoxSet);
+  const initBKey = boxKey(initBoxArr);
+
+  const queue = [{
+    ppx: px, ppy: py,
+    boxes: initBoxArr.slice(),
+    boxSet: initBoxSet,
+    reach: initReach,
+    pushes: [],
+  }];
+  const visited = new Set([`${initCanon}|${initBKey}`]);
+
+  let iters = 0;
+  const MAX = 200000;
+
+  while (queue.length > 0 && iters < MAX) {
+    iters++;
+    const { ppx, ppy, boxes, boxSet, reach, pushes } = queue.shift();
+
+    for (const [bx, by] of boxes) {
+      for (const [dx, dy] of [[0,-1],[0,1],[-1,0],[1,0]]) {
+        // Player must stand at (bx-dx, by-dy) to push box toward (bx+dx, by+dy)
+        const pfPos = `${bx-dx},${by-dy}`;
+        const btPos = `${bx+dx},${by+dy}`;
+        if (!reach.has(pfPos)) continue;
+        if (isWall(bx+dx, by+dy)) continue;
+        if (boxSet.has(btPos)) continue;
+        if (!alive.has(btPos)) continue;   // dead-square pruning
+
+        const newBoxes = boxes.filter(([x,y]) => !(x === bx && y === by));
+        newBoxes.push([bx+dx, by+dy]);
+        const newBoxSet = new Set(newBoxes.map(([x,y]) => `${x},${y}`));
+        const newBKey   = boxKey(newBoxes);
+
+        // Win check
+        if (newBoxes.every(([x,y]) => goals.has(`${x},${y}`))) {
+          return [...pushes, {bx, by, dx, dy}];
+        }
+
+        const { reach: newReach, canon: newCanon } = getReach(bx+dx, by+dy, newBoxSet);
+        const sk = `${newCanon}|${newBKey}`;
+        if (visited.has(sk)) continue;
+        visited.add(sk);
+
+        queue.push({
+          ppx: bx+dx, ppy: by+dy,
+          boxes: newBoxes,
+          boxSet: newBoxSet,
+          reach: newReach,
+          pushes: [...pushes, {bx, by, dx, dy}],
+        });
+      }
+    }
+  }
+
+  return null;
+}
+
+function initAliveQueue(goals) {
+  // Build seed array [[x,y], ...] from goal key set
+  return [...goals].map(s => s.split(',').map(Number));
+}
+
+// ===== INPUT =====
+document.addEventListener('keydown', e => {
+  if (e.repeat) return;
+  switch (e.key.toLowerCase()) {
+    case 'i': doMove( 0, -1); break;
+    case 'k': doMove( 0,  1); break;
+    case 'j': doMove(-1,  0); break;
+    case 'l': doMove( 1,  0); break;
+    case 'u': doUndo(); break;
+    case 'r': loadLevel(levelIndex); break;
+    case 'h': requestHint(); break;
+    case 'n':
+      if (won && levelIndex < LEVELS.length - 1) loadLevel(levelIndex + 1);
+      break;
+    case 'q': doQuit(); break;
+  }
+});
+
+// ===== LEVEL SELECT =====
+function buildLevelSelect() {
+  const div = document.getElementById('level-select');
+  for (let i = 0; i < LEVELS.length; i++) {
+    const btn = document.createElement('button');
+    btn.id = `lvbtn-${i}`;
+    btn.textContent = `Lv.${i + 1}`;
+    btn.addEventListener('click', () => loadLevel(i));
+    div.appendChild(btn);
+  }
+}
+
+function updateLevelButtons() {
+  for (let i = 0; i < LEVELS.length; i++) {
+    const btn = document.getElementById(`lvbtn-${i}`);
+    if (!btn) continue;
+    btn.className = [
+      i === levelIndex ? 'active' : '',
+      cleared.has(i)   ? 'cleared' : '',
+    ].filter(Boolean).join(' ');
+  }
+}
+
+// ===== INIT =====
+buildLevelSelect();
+loadLevel(0);
+</script>
+</body>
+</html>
