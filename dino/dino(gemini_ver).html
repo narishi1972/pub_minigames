@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Dino Run Clone</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f7f7f7;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            flex-direction: column;
+        }
+        canvas {
+            background-color: #fff;
+            border-bottom: 2px solid #535353;
+        }
+        .ui {
+            position: absolute;
+            top: 20%;
+            text-align: center;
+            color: #535353;
+        }
+    </style>
+</head>
+<body>
+
+<div class="ui">
+    <h1 id="score">SCORE: 0</h1>
+    <p>操作: Space(ジャンプ) / ← →(移動) / Q(終了)</p>
+</div>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreElement = document.getElementById('score');
+
+canvas.width = 800;
+canvas.height = 200;
+
+// ゲーム設定
+let score = 0;
+let gameActive = true;
+let gameSpeed = 5;
+
+// 恐竜オブジェクト
+const dino = {
+    x: 50,
+    y: 150,
+    width: 40,
+    height: 40,
+    color: '#535353',
+    dy: 0,
+    jumpForce: 12,
+    gravity: 0.6,
+    grounded: false,
+    speed: 5
+};
+
+// 障害物（サボテン）
+const obstacles = [];
+const obstacleConfig = {
+    width: 20,
+    height: 40,
+    color: '#ff4d4d'
+};
+
+// キー入力管理
+const keys = {};
+
+window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (e.key.toLowerCase() === 'q') {
+        if(confirm("リセットしますか？")) location.reload();
+    }
+});
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+function spawnObstacle() {
+    if (!gameActive) return;
+    obstacles.push({
+        x: canvas.width,
+        y: canvas.height - obstacleConfig.height,
+        ...obstacleConfig
+    });
+    // ランダムな間隔で次を生成
+    setTimeout(spawnObstacle, Math.random() * (2000 - 800) + 800);
+}
+
+function update() {
+    if (!gameActive) return;
+
+    // 左右移動
+    if (keys['ArrowLeft'] && dino.x > 0) dino.x -= dino.speed;
+    if (keys['ArrowRight'] && dino.x < canvas.width - dino.width) dino.x += dino.speed;
+
+    // ジャンプ処理
+    if (keys['Space'] && dino.grounded) {
+        dino.dy = -dino.jumpForce;
+        dino.grounded = false;
+    }
+
+    dino.dy += dino.gravity;
+    dino.y += dino.dy;
+
+    // 地面判定
+    if (dino.y + dino.height > canvas.height) {
+        dino.y = canvas.height - dino.height;
+        dino.dy = 0;
+        dino.grounded = true;
+    }
+
+    // 障害物の更新
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        obstacles[i].x -= gameSpeed;
+
+        // 当たり判定
+        if (
+            dino.x < obstacles[i].x + obstacles[i].width &&
+            dino.x + dino.width > obstacles[i].x &&
+            dino.y < obstacles[i].y + obstacles[i].height &&
+            dino.y + dino.height > obstacles[i].y
+        ) {
+            gameOver();
+        }
+
+        // 画面外に出たら削除
+        if (obstacles[i].x + obstacles[i].width < 0) {
+            obstacles.splice(i, 1);
+            score++;
+            scoreElement.innerText = `SCORE: ${score}`;
+            if (score % 10 === 0) gameSpeed += 0.2; // 徐々に加速
+        }
+    }
+
+    draw();
+    requestAnimationFrame(update);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 恐竜の描画（ドット絵風の四角）
+    ctx.fillStyle = dino.color;
+    ctx.fillRect(dino.x, dino.y, dino.width, dino.height);
+    
+    // 目
+    ctx.fillStyle = 'white';
+    ctx.fillRect(dino.x + 25, dino.y + 5, 5, 5);
+
+    // 障害物の描画
+    ctx.fillStyle = '#535353';
+    obstacles.forEach(ob => {
+        ctx.fillRect(ob.x, ob.y, ob.width, ob.height);
+    });
+}
+
+function gameOver() {
+    gameActive = false;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'white';
+    ctx.font = '30px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2);
+    ctx.font = '20px Arial';
+    ctx.fillText('Press F5 to Restart', canvas.width / 2, canvas.height / 2 + 40);
+}
+
+// 開始
+spawnObstacle();
+update();
+
+</script>
+</body>
+</html>

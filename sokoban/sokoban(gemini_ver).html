@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Sokoban Game</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #34495e;
+            color: white;
+            font-family: sans-serif;
+            margin-top: 50px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(8, 40px);
+            grid-template-rows: repeat(8, 40px);
+            gap: 1px;
+            background-color: #7f8c8d;
+            border: 4px solid #2c3e50;
+        }
+        .cell {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+        }
+        /* セルごとの装飾 */
+        .wall { background-color: #95a5a6; } /* 壁 */
+        .floor { background-color: #ecf0f1; } /* 床 */
+        .target { background-color: #f1c40f; } /* 目的地 */
+        .box { background-color: #e67e22; border-radius: 4px; } /* 荷物 */
+        .player { background-color: #3498db; border-radius: 50%; } /* プレイヤー */
+        .box-on-target { background-color: #2ecc71; border-radius: 4px; } /* 重なった荷物 */
+
+        .controls { margin-top: 20px; text-align: center; }
+        .stats { margin-bottom: 10px; font-size: 20px; }
+    </style>
+</head>
+<body>
+
+    <h1>SOKOBAN</h1>
+    <div class="stats">Moves: <span id="moveCount">0</span></div>
+    
+    <div id="gameBoard" class="grid"></div>
+
+    <div class="controls">
+        <p>操作: <b>カーソルキー</b> または <b>I, J, K, L</b></p>
+        <button onclick="resetGame()">リセット (R)</button>
+    </div>
+
+    <script>
+        // マップデータ
+        // 0:床, 1:壁, 2:目的地, 3:荷物, 4:プレイヤー
+        const initialMap = [
+            [1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 1, 0, 0, 1],
+            [1, 0, 3, 2, 0, 3, 2, 1],
+            [1, 0, 0, 0, 1, 0, 0, 1],
+            [1, 0, 3, 2, 0, 0, 0, 1],
+            [1, 1, 1, 0, 1, 4, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1]
+        ];
+
+        let map = [];
+        let playerPos = { x: 0, y: 0 };
+        let moves = 0;
+
+        function initGame() {
+            map = JSON.parse(JSON.stringify(initialMap));
+            moves = 0;
+            updateStats();
+            drawMap();
+        }
+
+        function drawMap() {
+            const board = document.getElementById("gameBoard");
+            board.innerHTML = "";
+            for (let y = 0; y < map.length; y++) {
+                for (let x = 0; x < map[y].length; x++) {
+                    const cell = document.createElement("div");
+                    cell.classList.add("cell");
+                    
+                    const item = map[y][x];
+                    if (item === 1) cell.classList.add("wall");
+                    else if (item === 2) {
+                        cell.classList.add("target");
+                        cell.innerText = "×";
+                    }
+                    else if (item === 3) cell.classList.add("box");
+                    else if (item === 4) {
+                        cell.classList.add("player");
+                        playerPos = { x, y };
+                    }
+                    else if (item === 5) cell.classList.add("box-on-target"); // 荷物＋目的地
+                    else if (item === 6) { // プレイヤー＋目的地
+                        cell.classList.add("player");
+                        cell.style.border = "2px solid #f1c40f";
+                        playerPos = { x, y };
+                    }
+                    else cell.classList.add("floor");
+                    
+                    board.appendChild(cell);
+                }
+            }
+            checkWin();
+        }
+
+        function move(dx, dy) {
+            const newX = playerPos.x + dx;
+            const newY = playerPos.y + dy;
+            const targetCell = map[newY][newX];
+
+            // 1. 壁なら動けない
+            if (targetCell === 1) return;
+
+            // 2. 荷物(3 または 5)がある場合
+            if (targetCell === 3 || targetCell === 5) {
+                const nextBoxX = newX + dx;
+                const nextBoxY = newY + dy;
+                const afterBoxCell = map[nextBoxY][nextBoxX];
+
+                // 荷物の先が床(0)か目的地(2)なら押せる
+                if (afterBoxCell === 0 || afterBoxCell === 2) {
+                    // 荷物を移動
+                    map[nextBoxY][nextBoxX] = (afterBoxCell === 2) ? 5 : 3;
+                    // 元の荷物があった場所を更新
+                    map[newY][newX] = (targetCell === 5) ? 2 : 0;
+                } else {
+                    return; // 押せない
+                }
+            }
+
+            // 3. プレイヤーの移動
+            const currentCell = map[playerPos.y][playerPos.x];
+            map[playerPos.y][playerPos.x] = (currentCell === 6) ? 2 : 0;
+            map[newY][newX] = (map[newY][newX] === 2) ? 6 : 4;
+            
+            moves++;
+            updateStats();
+            drawMap();
+        }
+
+        function updateStats() {
+            document.getElementById("moveCount").innerText = moves;
+        }
+
+        function checkWin() {
+            // マップ内に「荷物(3)」がなくなれば（すべて5になれば）クリア
+            const hasRemainingBox = map.some(row => row.includes(3));
+            if (!hasRemainingBox) {
+                setTimeout(() => alert("クリア！おめでとうございます！"), 50);
+            }
+        }
+
+        function resetGame() {
+            initGame();
+        }
+
+        window.addEventListener("keydown", (e) => {
+            const key = e.key.toLowerCase();
+            if (key === "arrowup" || key === "i") move(0, -1);
+            if (key === "arrowdown" || key === "k") move(0, 1);
+            if (key === "arrowleft" || key === "j") move(-1, 0);
+            if (key === "arrowright" || key === "l") move(1, 0);
+            if (key === "r") resetGame();
+        });
+
+        initGame();
+    </script>
+</body>
+</html>
