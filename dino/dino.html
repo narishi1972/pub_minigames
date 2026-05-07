@@ -2,570 +2,411 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ASCII Dino Game</title>
+  <title>Dino Runner</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      background: #1a1a2e;
-      color: #e0e0e0;
-      font-family: 'Courier New', Courier, monospace;
-      width: 100vw;
-      min-height: 100vh;
+      background: #111;
       display: flex;
       flex-direction: column;
       align-items: center;
-      overflow-x: hidden;
-    }
-
-    #title {
-      margin-top: 16px;
-      font-size: 1.6em;
-      color: #a0e0ff;
-      letter-spacing: 4px;
-      text-shadow: 0 0 10px #4af;
-    }
-
-    #key-guide {
-      margin-top: 8px;
-      font-size: 0.85em;
-      color: #aaa;
-      display: flex;
-      gap: 24px;
-      flex-wrap: wrap;
       justify-content: center;
+      min-height: 100vh;
+      gap: 14px;
+      user-select: none;
     }
-
-    #key-guide span {
-      background: #2a2a4a;
-      border: 1px solid #445;
-      border-radius: 4px;
-      padding: 2px 10px;
-    }
-
-    #key-guide strong {
-      color: #7ef;
-    }
-
-    #score-board {
-      margin-top: 10px;
-      font-size: 1.1em;
-      color: #ffe080;
-      letter-spacing: 2px;
-    }
-
-    #game-container {
-      margin-top: 12px;
-      width: 100vw;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-
-    #game-screen {
-      width: 100vw;
-      background: #0d0d1a;
-      border-top: 2px solid #334;
-      border-bottom: 2px solid #334;
-      font-size: 1.05em;
-      line-height: 1.35;
-      padding: 8px 0;
-      white-space: pre;
-      overflow: hidden;
-      font-family: 'Courier New', Courier, monospace;
-      color: #e0e0e0;
-      letter-spacing: 0.05em;
-    }
-
-    #message-overlay {
-      margin-top: 18px;
-      font-size: 1.15em;
-      color: #fff;
-      text-align: center;
-      min-height: 3em;
-      line-height: 1.8;
-    }
-
-    #message-overlay .highlight {
-      color: #7ef;
-      font-size: 1.3em;
-    }
-
-    #message-overlay .gameover {
-      color: #f77;
-      font-size: 1.4em;
-      text-shadow: 0 0 8px #f44;
-    }
-
-    #hi-score-display {
-      margin-top: 6px;
-      color: #aaa;
-      font-size: 0.9em;
-    }
+    canvas { display: block; border-radius: 10px; }
+    #keys { color: #555; font: 13px/1 'Courier New', monospace; }
+    #keys b { color: #8df; }
   </style>
 </head>
 <body>
-  <div id="title">★ ASCII DINO GAME ★</div>
+<canvas id="c"></canvas>
+<p id="keys"><b>SPACE</b> / <b>↑</b> ジャンプ &nbsp; <b>ENTER</b> スタート / リスタート</p>
+<script>
+'use strict';
 
-  <div id="key-guide">
-    <span><strong>J</strong> : 左移動</span>
-    <span><strong>L</strong> : 右移動</span>
-    <span><strong>SPACE</strong> : ジャンプ</span>
-    <span><strong>Q</strong> : 終了</span>
-    <span><strong>ENTER</strong> : スタート / リスタート</span>
-  </div>
+// ── Canvas ────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const W = Math.min(window.innerWidth - 32, 900);
+const H = 280;
+canvas.width  = W;
+canvas.height = H;
 
-  <div id="score-board">
-    SCORE: <span id="score-val">0</span>
-    &nbsp;&nbsp;&nbsp;
-    HI: <span id="hi-score-val">0</span>
-  </div>
+// ── Constants ─────────────────────────────────────────────
+const P  = 5;            // pixel-art unit (px per grid cell)
+const GY = H - 54;      // top of ground
+const DINO_LEFT = 60;   // dino's fixed left edge
+const DINO_W    = 10*P; // 50px
+const DINO_H    = 13*P; // 65px
+const GRAVITY   = 1800; // px/s²
+const JUMP_V    = -600; // initial jump velocity (px/s)
 
-  <div id="game-container">
-    <div id="game-screen"></div>
-  </div>
+// ── Dino ──────────────────────────────────────────────────
+// Grid: 10 cols × 13 rows, each cell P×P px. Facing right.
+//
+//  Head  : cols 3-9, rows 0-4
+//  Body  : cols 0-8, rows 3-8
+//  Tail  : cols 0-1, rows 5-7
+//  Legs  : animated, rows 9-12
+//
+function drawDino(bx, by, legFrame, dead, night) {
+  const s = P;
+  ctx.fillStyle = night ? '#aaa' : '#444';
 
-  <div id="message-overlay"></div>
-  <div id="hi-score-display"></div>
+  // Head
+  ctx.fillRect(bx+3*s, by,       7*s, 5*s);
+  // Upper body
+  ctx.fillRect(bx,     by+3*s,   9*s, 3*s);
+  // Lower body
+  ctx.fillRect(bx+s,   by+6*s,   8*s, 2*s);
+  ctx.fillRect(bx+2*s, by+8*s,   6*s,   s);
+  // Tail
+  ctx.fillRect(bx,     by+5*s,   2*s, 3*s);
 
-  <script>
-    // ========== 設定 ==========
-    const COLS = Math.floor(window.innerWidth / 9.6); // 半角文字幅に応じて列数算出
-    const ROWS = 14;          // ゲーム画面の行数
-    const GROUND_ROW = ROWS - 3;   // 地面の行インデックス
-    const DINO_MIN_COL = 2;
-    const DINO_MAX_COL = Math.floor(COLS * 0.35); // 左1/3以内でしか移動できない
+  // Legs & feet
+  ctx.fillRect(bx+2*s, by+9*s,   2*s, 2*s); // left thigh
+  ctx.fillRect(bx+5*s, by+9*s,   2*s, 2*s); // right thigh
+  if (legFrame === 0) {
+    ctx.fillRect(bx+s,   by+11*s, 3*s, s);   // left foot (back)
+    ctx.fillRect(bx+5*s, by+11*s, 4*s, s);   // right foot (fwd)
+  } else if (legFrame === 1) {
+    ctx.fillRect(bx+2*s, by+11*s, 4*s, s);   // left foot (fwd)
+    ctx.fillRect(bx+6*s, by+11*s, 3*s, s);   // right foot (back)
+  } else {
+    ctx.fillRect(bx+2*s, by+11*s, 2*s, s);
+    ctx.fillRect(bx+5*s, by+11*s, 2*s, s);
+  }
 
-    // 恐竜アスキーアート（3行 x 4列）
-    const DINO_BODY = [
-      " \\O/",
-      "  | ",
-      " / \\"
-    ];
-    const DINO_RUN1 = [
-      " \\O/",
-      "  | ",
-      " /  "
-    ];
-    const DINO_RUN2 = [
-      " \\O/",
-      "  | ",
-      "   \\"
-    ];
-    const DINO_JUMP = [
-      " \\O/",
-      "  | ",
-      " /\\ "
-    ];
-    const DINO_DEAD = [
-      " \\X/",
-      "  | ",
-      " / \\"
-    ];
+  // Eye white
+  ctx.fillStyle = 'white';
+  ctx.fillRect(bx+6*s, by+s, s, s);
 
-    // 障害物パターン
-    const OBSTACLES = [
-      // サボテン（高さ3行）
-      {
-        rows: [
-          " ||| ",
-          "_|||_",
-          " ||| "
-        ],
-        width: 5,
-        weight: 5
-      },
-      // 低いサボテン（高さ2行）
-      {
-        rows: [
-          "     ",
-          " |||_",
-          "_||| "
-        ],
-        width: 5,
-        weight: 5
-      },
-      // 岩（高さ2行）
-      {
-        rows: [
-          "      ",
-          " /\"\"\\ ",
-          " \\__/ "
-        ],
-        width: 6,
-        weight: 3
-      },
-      // 高いサボテン（高さ4行）
-      {
-        rows: [
-          "  |  ",
-          "-+|- ",
-          " ||| ",
-          "_||| "
-        ],
-        width: 5,
-        weight: 2
-      }
-    ];
+  if (!dead) {
+    ctx.fillStyle = '#111';
+    ctx.fillRect(bx+6*s+2, by+s+2, s-3, s-3);
+  } else {
+    // × eye
+    ctx.fillStyle = '#e33';
+    ctx.font = `bold ${s+1}px sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.fillText('×', bx+6*s-1, by+2*s+1);
+  }
+}
 
-    // 地面パターン
-    const GROUND_CHARS = ['_', '_', '_', '.', '_', '_', '-', '_', '_', '_', '.', '_'];
+function dinoBounds(by) {
+  return { x: DINO_LEFT+P, y: by, w: 8*P, h: 9*P };
+}
 
-    // ========== 状態変数 ==========
-    let gameState = 'idle'; // idle | playing | gameover
-    let score = 0;
-    let hiScore = 0;
-    let frame = 0;
-    let speed = 1.0;       // ピクセル/フレームに相当するスクロール速度
-    let scrollAccum = 0;   // スクロール蓄積
-    let dinoCol = 5;       // 恐竜の左端列
-    let dinoRow = GROUND_ROW - 3; // 恐竜の上端行（3行の高さ）
-    let dinoVY = 0;        // 垂直速度（負 = 上方向）
-    let dinoOnGround = true;
-    let dinoAnimFrame = 0;
-    let runFrameCounter = 0;
-    let obstacles = [];    // { col, pattern }
-    let obstacleSpawnCountdown = 0;
-    let loopId = null;
-    let lastTime = null;
-    let groundOffset = 0;  // 地面スクロールオフセット
+// ── Cacti ────────────────────────────────────────────────
+// Rects relative to (obstacleX, GY). y is negative = above ground.
+const CACTI = [
+  {
+    rects: [
+      {x:6,  y:-50, w:11, h:50},
+      {x:0,  y:-34, w:6,  h:10},
+      {x:17, y:-38, w:6,  h:14},
+      {x:0,  y:-46, w:6,  h:12},
+      {x:17, y:-50, w:6,  h:12},
+    ],
+    hw: 23, hh: 50,
+  },
+  {
+    rects: [
+      {x:7,  y:-70, w:11, h:70},
+      {x:0,  y:-52, w:7,  h:11},
+      {x:18, y:-56, w:7,  h:15},
+      {x:0,  y:-64, w:7,  h:12},
+    ],
+    hw: 25, hh: 70,
+  },
+  {
+    rects: [
+      {x:2,  y:-54, w:10, h:54},
+      {x:0,  y:-36, w:2,  h:9},
+      {x:12, y:-40, w:2,  h:13},
+      {x:22, y:-50, w:10, h:50},
+      {x:20, y:-32, w:2,  h:9},
+      {x:32, y:-36, w:2,  h:12},
+    ],
+    hw: 34, hh: 54,
+  },
+];
 
-    // ========== DOM ==========
-    const screenEl = document.getElementById('game-screen');
-    const scoreEl = document.getElementById('score-val');
-    const hiScoreEl = document.getElementById('hi-score-val');
-    const msgEl = document.getElementById('message-overlay');
+function drawCactus(type, bx) {
+  const highlight = 'rgba(255,255,255,0.1)';
+  ctx.fillStyle = '#3d7a3d';
+  for (const r of CACTI[type].rects) {
+    ctx.fillRect(bx+r.x, GY+r.y, r.w, r.h);
+    ctx.fillStyle = highlight;
+    ctx.fillRect(bx+r.x, GY+r.y, 2, r.h);
+    ctx.fillStyle = '#3d7a3d';
+  }
+}
 
-    // ========== キー入力 ==========
-    const keys = {};
-    const keyQueue = [];
+// ── Clouds ────────────────────────────────────────────────
+let clouds = [];
 
-    document.addEventListener('keydown', (e) => {
-      const k = e.key.toUpperCase();
-      if (['J', 'L', ' ', 'Q', 'ENTER'].includes(e.key === ' ' ? ' ' : k)) {
-        e.preventDefault();
-      }
-      if (!keys[k]) {
-        keys[k] = true;
-        keyQueue.push(k);
-      }
-      // ゲームループが動いていない idle/gameover 状態ではここで直接処理する
-      if (gameState === 'idle' || gameState === 'gameover') {
-        if (k === 'ENTER' || k === ' ') {
-          startGame();
-        }
-      }
-    });
-    document.addEventListener('keyup', (e) => {
-      keys[e.key.toUpperCase()] = false;
-    });
+function newCloud(randomX) {
+  return {
+    x:   randomX ? Math.random()*W : W+10,
+    y:   16 + Math.random()*55,
+    w:   55 + Math.random()*75,
+    spd: 25 + Math.random()*20,
+  };
+}
 
-    function pollKeys() {
-      const processed = new Set();
-      while (keyQueue.length > 0) {
-        const k = keyQueue.shift();
-        if (processed.has(k)) continue;
-        processed.add(k);
-        handleKey(k);
-      }
-    }
+function initClouds() {
+  clouds = Array.from({length:5}, () => newCloud(true));
+}
 
-    function handleKey(k) {
-      if (gameState === 'idle' || gameState === 'gameover') {
-        if (k === 'ENTER' || k === ' ') {
-          startGame();
-          return;
-        }
-      }
-      if (gameState === 'playing') {
-        if (k === 'Q') {
-          endGame(true);
-          return;
-        }
-        if (k === ' ' && dinoOnGround) {
-          dinoVY = -0.55;
-          dinoOnGround = false;
-        }
-      }
-    }
+function drawCloud({x, y, w}) {
+  ctx.fillStyle = 'rgba(255,255,255,0.72)';
+  rrect(x,          y+5,      w,        16, 8);
+  rrect(x+w*0.15,   y,        w*0.45,   18, 9);
+  rrect(x+w*0.5,    y+2,      w*0.35,   14, 7);
+}
 
-    // ========== ゲームロジック ==========
-    function startGame() {
-      score = 0;
-      frame = 0;
-      speed = 0.8;
-      scrollAccum = 0;
-      dinoCol = 5;
-      dinoRow = GROUND_ROW - 3;
-      dinoVY = 0;
-      dinoOnGround = true;
-      dinoAnimFrame = 0;
-      runFrameCounter = 0;
-      obstacles = [];
-      obstacleSpawnCountdown = randomSpawnInterval();
-      groundOffset = 0;
-      gameState = 'playing';
-      msgEl.innerHTML = '';
-      if (loopId) cancelAnimationFrame(loopId);
-      lastTime = null;
-      loopId = requestAnimationFrame(gameLoop);
-    }
+// ── Ground texture ────────────────────────────────────────
+let groundDots = [];
+const SPAN = W * 3;
 
-    function endGame(byQ = false) {
-      gameState = 'gameover';
-      if (score > hiScore) hiScore = score;
-      hiScoreEl.textContent = hiScore;
-      hiScoreEl.style.color = '#ffe080';
-      if (byQ) {
-        msgEl.innerHTML = '<span class="highlight">ゲーム終了しました</span><br>ENTER または SPACE でリスタート';
-      } else {
-        msgEl.innerHTML = '<span class="gameover">★ GAME OVER ★</span><br>SCORE: ' + score + '　HI: ' + hiScore + '<br><span style="color:#aef">ENTER または SPACE でリスタート</span>';
-      }
-      cancelAnimationFrame(loopId);
-      loopId = null;
-      render(); // 最終画面描画
-    }
+function initGroundTexture() {
+  groundDots = Array.from({length:80}, () => ({
+    x: Math.random() * SPAN,
+    y: GY + 4 + Math.random() * 22,
+    w: 2 + Math.random() * 12,
+    h: 1 + Math.random() * 2,
+  }));
+}
 
-    function randomSpawnInterval() {
-      // 障害物の出現間隔（フレーム数ベース）
-      return Math.floor(30 + Math.random() * 50);
-    }
+function drawGroundTexture(off) {
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  const o = off % SPAN;
+  for (const d of groundDots) {
+    const gx = ((d.x - o) % SPAN + SPAN) % SPAN;
+    if (gx < W + 20) ctx.fillRect(gx, d.y, d.w, d.h);
+  }
+}
 
-    function pickObstacle() {
-      const totalWeight = OBSTACLES.reduce((s, o) => s + o.weight, 0);
-      let r = Math.random() * totalWeight;
-      for (const ob of OBSTACLES) {
-        r -= ob.weight;
-        if (r <= 0) return ob;
-      }
-      return OBSTACLES[0];
-    }
+// ── State ─────────────────────────────────────────────────
+let state    = 'idle';
+let score    = 0, hiScore = 0;
+let speed    = 290;      // px/s
+let dinoY    = GY;      // bottom of dino (feet level)
+let dinoVY   = 0;
+let onGround = true;
+let legFrame = 0, legTimer = 0;
+let obstacles    = [];  // {x, type}
+let spawnTimer   = 0, spawnInterval = 1.6;
+let groundOffset = 0;
+let nightMode    = false;
+let hiFlash      = 0;   // seconds remaining for hi-score flash
+let rafId = null, lastTime = null;
 
-    // ========== ゲームループ ==========
-    function gameLoop(ts) {
-      if (!lastTime) lastTime = ts;
-      const dt = Math.min((ts - lastTime) / (1000 / 60), 3); // フレーム差分（60fps基準）
-      lastTime = ts;
+// ── Input ─────────────────────────────────────────────────
+const held = new Set();
+document.addEventListener('keydown', e => {
+  if (['Space','ArrowUp','Enter'].includes(e.code)) e.preventDefault();
+  if (held.has(e.code)) return;
+  held.add(e.code);
+  onKey(e.code);
+});
+document.addEventListener('keyup', e => held.delete(e.code));
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onKey('Space'); }, {passive:false});
 
-      pollKeys();
+function onKey(code) {
+  if (!['Space','ArrowUp','Enter'].includes(code)) return;
+  if (state !== 'playing') {
+    startGame();
+  } else if (onGround) {
+    dinoVY = JUMP_V;
+    onGround = false;
+  }
+}
 
-      // 水平移動
-      if (gameState === 'playing') {
-        if (keys['J']) {
-          dinoCol = Math.max(DINO_MIN_COL, dinoCol - 1);
-        }
-        if (keys['L']) {
-          dinoCol = Math.min(DINO_MAX_COL, dinoCol + 1);
-        }
+// ── Game ──────────────────────────────────────────────────
+function startGame() {
+  score = 0; speed = 290;
+  dinoY = GY; dinoVY = 0; onGround = true;
+  legFrame = 0; legTimer = 0; hiFlash = 0;
+  obstacles = []; spawnTimer = 0; spawnInterval = 1.6;
+  groundOffset = 0; nightMode = false;
+  initClouds();
+  initGroundTexture();
+  state = 'playing';
+  if (rafId) cancelAnimationFrame(rafId);
+  lastTime = null;
+  rafId = requestAnimationFrame(mainLoop);
+}
 
-        // ジャンプ物理
-        if (!dinoOnGround) {
-          dinoVY += 0.045 * dt; // 重力
-          dinoRow += dinoVY * dt * 8;
-          const groundY = GROUND_ROW - 3;
-          if (dinoRow >= groundY) {
-            dinoRow = groundY;
-            dinoVY = 0;
-            dinoOnGround = true;
-          }
-        }
+function mainLoop(ts) {
+  if (!lastTime) lastTime = ts;
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+  if (state === 'playing') update(dt);
+  draw();
+  rafId = requestAnimationFrame(mainLoop);
+}
 
-        // スクロール
-        scrollAccum += speed * dt;
-        const scrollSteps = Math.floor(scrollAccum);
-        scrollAccum -= scrollSteps;
+function update(dt) {
+  // Physics
+  if (!onGround) {
+    dinoVY += GRAVITY * dt;
+    dinoY  += dinoVY * dt;
+    if (dinoY >= GY) { dinoY = GY; dinoVY = 0; onGround = true; }
+  }
 
-        // 障害物移動
-        for (const ob of obstacles) {
-          ob.col -= scrollSteps;
-        }
-        // 地面オフセット
-        groundOffset = (groundOffset + scrollSteps) % GROUND_CHARS.length;
+  // Leg animation
+  if (onGround) {
+    legTimer += dt;
+    if (legTimer > 0.085) { legFrame ^= 1; legTimer = 0; }
+  }
 
-        // 障害物除去
-        obstacles = obstacles.filter(ob => ob.col + ob.pattern.width > 0);
+  // Scroll
+  groundOffset += speed * dt;
 
-        // 障害物スポーン
-        obstacleSpawnCountdown -= dt;
-        if (obstacleSpawnCountdown <= 0) {
-          const pattern = pickObstacle();
-          obstacles.push({ col: COLS + 2, pattern });
-          obstacleSpawnCountdown = randomSpawnInterval() / speed;
-        }
+  // Clouds (parallax)
+  for (const c of clouds) {
+    c.x -= c.spd * dt;
+    if (c.x + c.w < 0) Object.assign(c, newCloud(false));
+  }
 
-        // アニメーション
-        runFrameCounter += dt;
-        if (runFrameCounter >= 4) {
-          dinoAnimFrame = (dinoAnimFrame + 1) % 2;
-          runFrameCounter = 0;
-        }
+  // Obstacles
+  for (const ob of obstacles) ob.x -= speed * dt;
+  obstacles = obstacles.filter(ob => ob.x + 80 > 0);
+  spawnTimer += dt;
+  if (spawnTimer >= spawnInterval) {
+    obstacles.push({ x: W+20, type: Math.floor(Math.random()*CACTI.length) });
+    spawnTimer = 0;
+    spawnInterval = Math.max(0.65, 1.6 - Math.floor(score)*0.0006);
+  }
 
-        // スコア更新
-        score = Math.floor(frame * speed * 0.5);
-        scoreEl.textContent = score;
-        if (score > hiScore) {
-          hiScore = score;
-          hiScoreEl.textContent = hiScore;
-        }
+  // Score & speed
+  const prev = Math.floor(score);
+  score += speed * dt * 0.04;
+  speed  = Math.min(850, 290 + Math.floor(score) * 0.4);
+  nightMode = Math.floor(score / 600) % 2 === 1;
 
-        // 速度上昇（徐々に加速）
-        speed += 0.0003 * dt;
-        speed = Math.min(speed, 4.0);
+  if (Math.floor(score) > hiScore && prev <= hiScore && hiScore > 0) hiFlash = 1.5;
+  if (hiFlash > 0) hiFlash -= dt;
 
-        // 当たり判定
-        if (checkCollision()) {
-          endGame(false);
-          return;
-        }
+  // Collision
+  if (checkHit()) {
+    if (Math.floor(score) > hiScore) hiScore = Math.floor(score);
+    state = 'gameover';
+  }
+}
 
-        frame += dt;
-      }
+function checkHit() {
+  const dinoTop = dinoY - DINO_H;
+  const b = dinoBounds(dinoTop);
+  for (const ob of obstacles) {
+    const ct = CACTI[ob.type];
+    const ox = ob.x + 3;
+    const oy = GY - ct.hh;
+    if (b.x < ox+ct.hw-3 && b.x+b.w > ox && b.y < oy+ct.hh && b.y+b.h > oy) return true;
+  }
+  return false;
+}
 
-      render();
-      loopId = requestAnimationFrame(gameLoop);
-    }
+// ── Draw ──────────────────────────────────────────────────
+function draw() {
+  // Sky
+  ctx.fillStyle = nightMode ? '#090920' : '#c8e8ff';
+  ctx.fillRect(0, 0, W, H);
 
-    // ========== 当たり判定 ==========
-    function checkCollision() {
-      // 恐竜の占有セルを列挙（簡易AABB）
-      const dinoLeft = dinoCol + 1; // アート内の余白を除く
-      const dinoRight = dinoCol + 3;
-      const dinoTop = Math.floor(dinoRow);
-      const dinoBottom = dinoTop + 2;
+  if (nightMode) {
+    drawStars();
+    drawMoon();
+  } else {
+    for (const c of clouds) drawCloud(c);
+  }
 
-      for (const ob of obstacles) {
-        const obLeft = ob.col + 1;
-        const obRight = ob.col + ob.pattern.width - 1;
-        const obRows = ob.pattern.rows;
-        const obTop = GROUND_ROW - obRows.length;
-        const obBottom = GROUND_ROW - 1;
+  // Ground
+  ctx.fillStyle = nightMode ? '#2a2a2a' : '#c2a870';
+  ctx.fillRect(0, GY, W, H-GY);
+  ctx.fillStyle = nightMode ? '#4a7040' : '#6ab83a';
+  ctx.fillRect(0, GY, W, 6);
+  drawGroundTexture(groundOffset);
 
-        // X/Y の矩形重なりチェック
-        if (dinoRight < obLeft || dinoLeft > obRight) continue;
-        if (dinoBottom < obTop || dinoTop > obBottom) continue;
+  // Cacti
+  for (const ob of obstacles) drawCactus(ob.type, ob.x);
 
-        // 重なった行のアスキーアートで非空白セルを確認
-        for (let r = Math.max(dinoTop, obTop); r <= Math.min(dinoBottom, obBottom); r++) {
-          const obRowIdx = r - obTop;
-          const obRowStr = obRows[obRowIdx] || '';
-          const dinoRowIdx = r - dinoTop;
-          const dinoArt = getDinoArt('dead');
-          const dinoRowStr = dinoArt[dinoRowIdx] || '';
+  // Dino
+  const dinoTop = dinoY - DINO_H;
+  const lf = onGround ? legFrame : 2;
+  drawDino(DINO_LEFT, dinoTop, lf, state === 'gameover', nightMode);
 
-          for (let c = Math.max(dinoLeft, obLeft); c <= Math.min(dinoRight, obRight); c++) {
-            const obChar = obRowStr[c - ob.col] || ' ';
-            const dinoChar = dinoRowStr[c - dinoCol] || ' ';
-            if (obChar !== ' ' && dinoChar !== ' ') return true;
-          }
-        }
-      }
-      return false;
-    }
+  // Score HUD
+  const tc = nightMode ? '#ccc' : '#555';
+  ctx.textAlign = 'right';
+  ctx.font = 'bold 18px "Courier New",monospace';
+  const flashOn = hiFlash > 0 && Math.floor(hiFlash*8) % 2 === 0;
+  ctx.fillStyle = flashOn ? '#fc0' : tc;
+  ctx.fillText(`HI ${pad(hiScore)}`, W-16, 30);
+  ctx.fillStyle = tc;
+  ctx.fillText(pad(Math.floor(score)), W-16, 52);
 
-    // ========== 描画 ==========
-    function getDinoArt(state) {
-      if (state === 'dead') return DINO_DEAD;
-      if (state === 'jump') return DINO_JUMP;
-      if (state === 'run') return dinoAnimFrame === 0 ? DINO_RUN1 : DINO_RUN2;
-      return DINO_BODY;
-    }
+  // Overlay (idle / gameover)
+  if (state !== 'playing') drawOverlay();
+}
 
-    function render() {
-      // 2D グリッド（文字配列）
-      const grid = [];
-      for (let r = 0; r < ROWS; r++) {
-        grid.push(new Array(COLS).fill(' '));
-      }
+function drawStars() {
+  const t = Date.now() * 0.001;
+  for (let i = 0; i < 45; i++) {
+    const sx = (i*199+23) % W;
+    const sy = (i*137+11) % (GY-20);
+    const a  = (Math.sin(t*1.5 + i*0.7) + 1) / 2 * 0.85;
+    ctx.fillStyle = `rgba(255,255,255,${a.toFixed(2)})`;
+    ctx.fillRect(sx, sy, 2, 2);
+  }
+}
 
-      // === 地面 ===
-      for (let c = 0; c < COLS; c++) {
-        const idx = (c + groundOffset) % GROUND_CHARS.length;
-        grid[GROUND_ROW][c] = GROUND_CHARS[idx];
-      }
-      // 地面の下にも線
-      for (let c = 0; c < COLS; c++) {
-        grid[GROUND_ROW + 1][c] = '=';
-      }
+function drawMoon() {
+  const mx = W*0.82, my = 45;
+  ctx.fillStyle = 'rgba(255,255,200,0.75)';
+  ctx.beginPath(); ctx.arc(mx, my, 18, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#090920';
+  ctx.beginPath(); ctx.arc(mx+8, my-5, 14, 0, Math.PI*2); ctx.fill();
+}
 
-      // === 遠景装飾（雲）===
-      const cloudRow = 1;
-      const cloudPattern = '~~~';
-      const cloudPositions = [10, 40, 80, 120, 160, 200];
-      for (const base of cloudPositions) {
-        const pos = ((base - Math.floor(groundOffset * 0.3)) % COLS + COLS) % COLS;
-        for (let i = 0; i < cloudPattern.length; i++) {
-          if (pos + i < COLS) grid[cloudRow][pos + i] = cloudPattern[i];
-        }
-      }
+function drawOverlay() {
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  if (state === 'gameover') {
+    ctx.font = 'bold 30px "Courier New",monospace';
+    ctx.fillText('G A M E  O V E R', W/2, H/2-14);
+  } else {
+    ctx.font = 'bold 26px "Courier New",monospace';
+    ctx.fillText('DINO RUNNER', W/2, H/2-16);
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.font = '15px "Courier New",monospace';
+  ctx.fillText('SPACE / ENTER でスタート', W/2, H/2+16);
+}
 
-      // === 障害物 ===
-      for (const ob of obstacles) {
-        const rows = ob.pattern.rows;
-        const obTop = GROUND_ROW - rows.length;
-        for (let ri = 0; ri < rows.length; ri++) {
-          const r = obTop + ri;
-          if (r < 0 || r >= ROWS) continue;
-          for (let ci = 0; ci < rows[ri].length; ci++) {
-            const c = ob.col + ci;
-            if (c < 0 || c >= COLS) continue;
-            const ch = rows[ri][ci];
-            if (ch !== ' ') grid[r][c] = ch;
-          }
-        }
-      }
+// ── Helpers ───────────────────────────────────────────────
+function rrect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);  ctx.arcTo(x+w, y,   x+w, y+r,   r);
+  ctx.lineTo(x+w, y+h-r); ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+  ctx.lineTo(x+r, y+h);  ctx.arcTo(x, y+h,   x, y+h-r,  r);
+  ctx.lineTo(x, y+r);    ctx.arcTo(x, y,     x+r, y,     r);
+  ctx.closePath();
+  ctx.fill();
+}
 
-      // === 恐竜 ===
-      let dinoState = 'body';
-      if (gameState === 'gameover') dinoState = 'dead';
-      else if (!dinoOnGround) dinoState = 'jump';
-      else dinoState = 'run';
-      const dinoArt = getDinoArt(dinoState);
+function pad(n) { return String(n).padStart(5, '0'); }
 
-      const dinoTopRow = Math.round(dinoRow);
-      for (let ri = 0; ri < dinoArt.length; ri++) {
-        const r = dinoTopRow + ri;
-        if (r < 0 || r >= ROWS) continue;
-        for (let ci = 0; ci < dinoArt[ri].length; ci++) {
-          const c = dinoCol + ci;
-          if (c < 0 || c >= COLS) continue;
-          const ch = dinoArt[ri][ci];
-          if (ch !== ' ') grid[r][c] = ch;
-        }
-      }
-
-      // === 待機・終了メッセージ ===
-      if (gameState === 'idle') {
-        const msg1 = '== PRESS ENTER TO START ==';
-        const msg2 = '~ ASCII DINO RUNNER ~';
-        const r1 = Math.floor(ROWS / 2) - 2;
-        const r2 = Math.floor(ROWS / 2);
-        putString(grid, r1, Math.floor((COLS - msg2.length) / 2), msg2);
-        putString(grid, r2, Math.floor((COLS - msg1.length) / 2), msg1);
-      }
-
-      // === グリッドを文字列に変換 ===
-      const lines = grid.map(row => row.join(''));
-      screenEl.textContent = lines.join('\n');
-    }
-
-    function putString(grid, row, col, str) {
-      if (row < 0 || row >= ROWS) return;
-      for (let i = 0; i < str.length; i++) {
-        const c = col + i;
-        if (c >= 0 && c < COLS) grid[row][c] = str[i];
-      }
-    }
-
-    // ========== 初期化 ==========
-    hiScoreEl.textContent = '0';
-    scoreEl.textContent = '0';
-    msgEl.innerHTML = '<span class="highlight">★ ASCII DINO GAME ★</span><br>ENTER または SPACE でスタート！';
-    render(); // 初期画面
-  </script>
+// ── Boot ──────────────────────────────────────────────────
+initClouds();
+initGroundTexture();
+rafId = requestAnimationFrame(mainLoop);
+</script>
 </body>
 </html>

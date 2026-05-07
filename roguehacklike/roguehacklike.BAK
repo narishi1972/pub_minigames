@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ASCII Rogue Like</title>
+
+<style>
+body {
+    background: black;
+    color: #00ff88;
+    margin: 0;
+    overflow: hidden;
+    font-family: monospace;
+}
+
+#info {
+    color: white;
+    padding: 16px;
+    font-family: monospace;
+}
+
+#game {
+    white-space: pre;
+    font-size: 24px;
+    line-height: 1.0;
+    padding: 16px;
+}
+</style>
+</head>
+
+<body>
+
+<div id="info">
+Move: hjkl or Arrow Keys / Quit: q
+</div>
+
+<div id="game"></div>
+
+<script>
+const WIDTH = 30;
+const HEIGHT = 15;
+
+const WALL = "#";
+const FLOOR = ".";
+
+let running = true;
+
+// Player position
+let playerX = 2;
+let playerY = 2;
+
+// X/Y animation toggle
+let playerToggle = false;
+
+// Map data
+const map = [];
+
+function generateMap() {
+
+    for (let y = 0; y < HEIGHT; y++) {
+
+        map[y] = [];
+
+        for (let x = 0; x < WIDTH; x++) {
+
+            // Border walls
+            if (
+                x === 0 ||
+                y === 0 ||
+                x === WIDTH - 1 ||
+                y === HEIGHT - 1
+            ) {
+                map[y][x] = WALL;
+            } else {
+
+                // Random walls
+                map[y][x] =
+                    Math.random() < 0.18
+                    ? WALL
+                    : FLOOR;
+            }
+        }
+    }
+
+    // Ensure start position is walkable
+    map[playerY][playerX] = FLOOR;
+}
+
+generateMap();
+
+function draw() {
+
+    let screen = "";
+
+    for (let y = 0; y < HEIGHT; y++) {
+
+        for (let x = 0; x < WIDTH; x++) {
+
+            if (x === playerX && y === playerY) {
+                screen += playerToggle ? "X" : "Y";
+            } else {
+                screen += map[y][x];
+            }
+        }
+
+        screen += "\n";
+    }
+
+    document.getElementById("game").textContent = screen;
+}
+
+function move(dx, dy) {
+
+    const nx = playerX + dx;
+    const ny = playerY + dy;
+
+    if (map[ny][nx] === FLOOR) {
+
+        playerX = nx;
+        playerY = ny;
+
+        // Toggle X/Y
+        playerToggle = !playerToggle;
+    }
+
+    draw();
+}
+
+document.addEventListener("keydown", (e) => {
+
+    if (!running) {
+        return;
+    }
+
+    switch (e.key) {
+
+        // vi-style controls
+        case "h":
+            move(-1, 0);
+            break;
+
+        case "j":
+            move(0, 1);
+            break;
+
+        case "k":
+            move(0, -1);
+            break;
+
+        case "l":
+            move(1, 0);
+            break;
+
+        // Arrow keys
+        case "ArrowLeft":
+            move(-1, 0);
+            break;
+
+        case "ArrowDown":
+            move(0, 1);
+            break;
+
+        case "ArrowUp":
+            move(0, -1);
+            break;
+
+        case "ArrowRight":
+            move(1, 0);
+            break;
+
+        // Quit
+        case "q":
+            running = false;
+
+            document.getElementById("info").textContent =
+                "Game Over";
+
+            break;
+    }
+});
+
+draw();
+</script>
+
+</body>
+</html>
